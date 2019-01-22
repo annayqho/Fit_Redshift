@@ -6,6 +6,7 @@ can also use O III
 
 import numpy as np
 from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
 
 
 def gaussian(x, amp, cen, wid):
@@ -13,7 +14,7 @@ def gaussian(x, amp, cen, wid):
     return amp * np.exp(-(x-cen)**2 / wid)
 
 
-def fit_redshift(specfile, l0, z0):
+def fit_redshift(specfile, l0, z0, window):
     """
     Given a galaxy spectrum, get the best-fit redshift
 
@@ -28,8 +29,6 @@ def fit_redshift(specfile, l0, z0):
     z: best-fit redshift
     zerr: uncertainty on best-fit redshift
     """
-    window = 50 # Angstroms
-
     dat = np.loadtxt(specfile)
     wl_all = dat[:,0]
     flux_all = dat[:,1]
@@ -43,9 +42,47 @@ def fit_redshift(specfile, l0, z0):
     wl = wl_all[choose]
     flux = flux_all[choose]
 
+    # Normalize
+    flux_norm = flux / np.median(flux)  
+
     # Fit the Gaussian to this region
-    best_vals, covar = curve_fit(gaissna, wl, flux, p0=init_vals)
+    init_vals = [4, lm, 3]
+    best_vals, covar = curve_fit(
+            gaussian, wl, flux_norm, p0=init_vals)
+
+    # Plot the fit
+    plt.plot(wl, flux_norm, c='k')
+    xfit = np.linspace(min(wl), max(wl), 1000)
+    yfit = gaussian(xfit, best_vals[0], best_vals[1], best_vals[2])
+    plt.plot(xfit, yfit, c='r')
+    plt.show()
+
+    # Convert the best-fit into an actual redshift
+    center = best_vals[1]
+    ecenter = covar[1][1]
+    z = (center-l0)/l0
+    ez = ecenter/l0
+
+    # Return values
+    return z, ez
 
 
 if __name__=="__main__":
-    specfile = "/Users/annaho/Dropbox/Projects/Research/ZTF18abukavn/data/spec/ZTF18abukavn/ZTF18abukavn_20181109_Keck1_v1"
+    specfile = "/Users/annaho/Dropbox/Projects/Research/ZTF18abukavn/data/spec/ZTF18abukavn/ZTF18abukavn_20181109_Keck1_v1.ascii"
+
+    balmer = np.array([6564.61, 4862.68, 4341.68, 4102.89, 3970.072])
+
+    # Use Halpha
+    l0 = balmer[0]
+    
+    # Initial guess
+    z0 = 0.0322
+    
+    # Window size, in angstroms
+    window = 20 
+
+    # Solve
+    z, ez = fit_redshift(specfile, l0, z0, window)
+
+    # Print the best-fit redshift, and uncertainty
+    print("%s +/- %s" %(np.round(z,7), np.round(ez, 7)))
